@@ -1,0 +1,69 @@
+services:
+  rtmp:
+    build: ./rtmp
+    environment:
+      INTERNAL_WEBHOOK_SECRET: ${INTERNAL_WEBHOOK_SECRET}
+    depends_on:
+      - api
+    ports:
+      - "1935:1935"   # RTMP ingest
+      - "8080:8080"   # HLS playback over HTTP
+    volumes:
+      - hls-data:/var/www/hls
+    networks:
+      - streaming-net
+    restart: unless-stopped
+ 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - streaming-net
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+ 
+  api:
+    build: ./api
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_WEBHOOK_SECRET: ${INTERNAL_WEBHOOK_SECRET}
+      HLS_PUBLIC_BASE: ${HLS_PUBLIC_BASE}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      PORT: 3000
+      NODE_ENV: development
+    volumes:
+      - ./api:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - streaming-net
+    restart: unless-stopped
+ 
+volumes:
+  hls-data:
+  pg-data:
+ 
+ 
+networks:
+  streaming-net:
+    driver: bridge

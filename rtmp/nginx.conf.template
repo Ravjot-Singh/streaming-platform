@@ -1,0 +1,93 @@
+worker_processes auto;
+
+error_log logs/error.log info;
+
+events {
+    worker_connections 1024;
+}
+
+rtmp {
+    server {
+        listen 1935;
+        chunk_size 4096;
+
+        application live {
+            live on;
+            record off;
+
+            hls on;
+            hls_path /var/www/hls/source;
+            hls_fragment 3s;        # length of each .ts segment
+            hls_playlist_length 60s; # how much of the playlist history to keep
+            hls_cleanup on;         # remove stale segment/playlist files after a stream ends
+
+
+            hls_continuous off;
+
+            hls_nested on;
+
+            drop_idle_publisher 10s;
+
+            on_publish http://api:3000/api/stream/validate?secret=${INTERNAL_WEBHOOK_SECRET};
+            on_publish_done http://api:3000/api/stream/end?secret=${INTERNAL_WEBHOOK_SECRET};
+
+            exec /transcode.sh $name;
+        }
+
+        application transcode_720 {
+            live on;
+            record off;
+
+            allow publish 127.0.0.1;
+            deny publish all;
+
+            hls on;
+            hls_path /var/www/hls/transcode_720;
+            hls_fragment 3s;
+            hls_playlist_length 60s;
+            hls_cleanup on;
+            hls_continuous off;
+            hls_nested on;
+        }
+
+        application transcode_360 {
+            live on;
+            record off;
+
+            allow publish 127.0.0.1;
+            deny publish all;
+
+            hls on;
+            hls_path /var/www/hls/transcode_360;
+            hls_fragment 3s;
+            hls_playlist_length 60s;
+            hls_cleanup on;
+            hls_continuous off;
+            hls_nested on;
+        }
+    }
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile on;
+
+    server {
+        listen 8080;
+
+        location /hls {
+            types {
+                application/vnd.apple.mpegurl m3u8;
+                video/mp2t ts;
+            }
+            root /var/www;
+            add_header Cache-Control no-cache;
+            add_header Access-Control-Allow-Origin * always;
+        }
+
+        location /stat {
+            rtmp_stat all;
+        }
+    }
+}
