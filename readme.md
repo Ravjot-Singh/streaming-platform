@@ -142,7 +142,7 @@ sequenceDiagram
         Entrypoint->>API: POST /api/stream/reset-all?secret=...
     end
     Note over Entrypoint,API: Clears any stale is_live=true left over<br/>from an ungraceful previous shutdown
-    Entrypoint->>Nginx: exec nginx -g 'daemon off;'
+    Entrypoint->>Nginx: exec nginx -g 'daemon off&#59;'
     Note over Entrypoint,Nginx: Shell process replaced by nginx<br/>(same PID, new program)
     Nginx->>Nginx: Parse nginx.conf, bind :1935 and :8080
 ```
