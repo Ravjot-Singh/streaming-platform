@@ -136,22 +136,28 @@ sequenceDiagram
     participant API
     participant Nginx
 
-    Docker->>Entrypoint: CMD ["/entrypoint.sh"] (PID 1)
-    Entrypoint->>Entrypoint: envsubst nginx.conf.template -> nginx.conf
-    loop retry up to 10x
+    Docker->>Entrypoint: CMD ["/entrypoint.sh"] PID 1
+    Entrypoint->>Entrypoint: envsubst nginx.conf.template to nginx.conf
+
+    loop Retry up to 10 times
         Entrypoint->>API: POST /api/stream/reset-all?secret=...
     end
-    Note over Entrypoint,API: Clears any stale is_live=true left over<br/>from an ungraceful previous shutdown
-    Entrypoint->>Nginx: exec nginx -g 'daemon off&#59;'
-    Note over Entrypoint,Nginx: Shell process replaced by nginx<br/>(same PID, new program)
-    Nginx->>Nginx: Parse nginx.conf, bind :1935 and :8080
+
+    Note over Entrypoint,API: Clears stale is_live=true from an ungraceful shutdown
+
+    Entrypoint->>Nginx: exec nginx -g daemon off
+    Note over Entrypoint,Nginx: Shell process is replaced by nginx
+
+    Nginx->>Nginx: Parse nginx.conf and bind ports 1935 and 8080
 ```
 
 **Build time** (`rtmp/Dockerfile`, two stages):
-1. **Builder stage** — installs build tools, downloads nginx source, clones `nginx-rtmp-module`, runs `./configure --add-module=... && make install`. The RTMP module is compiled *directly into* the nginx binary, not loaded as a runtime plugin.
-2. **Runtime stage** — fresh slim base image, installs only runtime deps (`ffmpeg`, `curl`, `gettext-base`, `procps`), copies the compiled nginx binary plus `nginx.conf.template`, `entrypoint.sh`, `transcode.sh` from the builder stage.
 
-**Why a template instead of a plain `nginx.conf`?** The webhook secret (`INTERNAL_WEBHOOK_SECRET`) lives in `.env`, only available at *container runtime* — but the config file gets baked into the image at *build time*. Templating + `envsubst` at startup keeps one source of truth instead of duplicating the secret in two places.
+1. **Builder stage** — installs build tools, downloads nginx source, clones `nginx-rtmp-module`, and runs `./configure --add-module=... && make install`. The RTMP module is compiled directly into the nginx binary, not loaded as a runtime plugin.
+
+2. **Runtime stage** — uses a fresh slim base image and installs only runtime dependencies (`ffmpeg`, `curl`, `gettext-base`, `procps`). It then copies the compiled nginx binary along with `nginx.conf.template`, `entrypoint.sh`, and `transcode.sh` from the builder stage.
+
+**Why a template instead of a plain `nginx.conf`?** The webhook secret (`INTERNAL_WEBHOOK_SECRET`) lives in `.env` and is available only at container runtime, while the configuration file is created during container startup. Using `envsubst` keeps the secret out of the Docker image and avoids duplicating it.
 
 ---
 
